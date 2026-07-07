@@ -167,6 +167,32 @@ open class PanModalPresentationController: UIPresentationController {
 
     // MARK: - Lifecycle
 
+    /**
+     A flag to track whether the initial layout has been completed.
+     Used to determine if panContainerView has been positioned by PanModal.
+     */
+    private var hasCompletedInitialLayout = false
+
+    /**
+     Override frameOfPresentedViewInContainerView to prevent UIKit from resetting
+     the panContainerView's frame during layout passes triggered by child view
+     controller presentations (e.g. QLPreviewController internally presenting its
+     document rendering controller).
+
+     The default UIPresentationController implementation returns containerView.bounds,
+     which would reset panContainerView.origin.y to 0 and cause the modal to jump
+     to the top of the screen, making its content appear to disappear.
+
+     After the initial layout is complete, we return the current panContainerView frame
+     to preserve the pan modal's position.
+     */
+    override public var frameOfPresentedViewInContainerView: CGRect {
+        guard hasCompletedInitialLayout, let containerFrame = containerView?.frame else {
+            return super.frameOfPresentedViewInContainerView
+        }
+        return panContainerView.frame
+    }
+
     override public func containerViewWillLayoutSubviews() {
         super.containerViewWillLayoutSubviews()
         configureViewLayout()
@@ -196,7 +222,17 @@ open class PanModalPresentationController: UIPresentationController {
     }
 
     override public func presentationTransitionDidEnd(_ completed: Bool) {
-        if completed { return }
+        if completed {
+            /**
+             Mark initial layout as complete so frameOfPresentedViewInContainerView
+             returns the current panContainerView frame instead of containerView.bounds.
+             This prevents subsequent layout passes (e.g. triggered by QLPreviewController
+             internally presenting its document rendering controller) from resetting
+             the panContainerView's position.
+             */
+            hasCompletedInitialLayout = true
+            return
+        }
 
         backgroundView.removeFromSuperview()
     }
@@ -232,6 +268,14 @@ open class PanModalPresentationController: UIPresentationController {
     override public func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
         super.viewWillTransition(to: size, with: coordinator)
 
+        /**
+         Temporarily reset hasCompletedInitialLayout during rotation so that
+         frameOfPresentedViewInContainerView allows the system to recalculate
+         the container layout with the new size, before we re-apply our custom
+         frame via adjustPresentedViewFrame().
+         */
+        hasCompletedInitialLayout = false
+
         coordinator.animate(alongsideTransition: { [weak self] _ in
             guard
                 let self = self,
@@ -242,6 +286,8 @@ open class PanModalPresentationController: UIPresentationController {
             if presentable.shouldRoundTopCorners {
                 self.addRoundedCorners(to: self.presentedView)
             }
+        }, completion: { [weak self] _ in
+            self?.hasCompletedInitialLayout = true
         })
     }
 
