@@ -370,10 +370,9 @@ private extension PanModalPresentationController {
         guard let frame = containerView?.frame
             else { return }
 
-        let adjustedSize = CGSize(width: frame.size.width, height: frame.size.height - anchoredYPosition)
         let panFrame = panContainerView.frame
         panContainerView.frame.size = frame.size
-        
+
         if ![shortFormYPosition, longFormYPosition].contains(panFrame.origin.y) {
             // if the container is already in the correct position, no need to adjust positioning
             // (rotations & size changes cause positioning to be out of sync)
@@ -381,7 +380,18 @@ private extension PanModalPresentationController {
             presentedView.frame.origin.y = max(yPosition, anchoredYPosition)
         }
         panContainerView.frame.origin.x = frame.origin.x
-        presentedViewController.view.frame = CGRect(origin: .zero, size: adjustedSize)
+
+        /**
+         Set the presented view controller's view frame to fill the entire panContainerView.
+         
+         Previously this was set to `frame.size.height - anchoredYPosition` (adjustedSize),
+         but that caused system view controllers like QLPreviewController to lose their content,
+         because they rely on their view's full frame to layout internal document rendering views.
+         
+         The visible area is already controlled by panContainerView's origin.y position,
+         so the child view does not need to be additionally clipped in height.
+         */
+        presentedViewController.view.frame = CGRect(origin: .zero, size: frame.size)
     }
 
     /**
